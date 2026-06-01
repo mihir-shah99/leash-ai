@@ -1,0 +1,27 @@
+[project]
+name = "mcp-gateway"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Mihir Shah",email = "mihir.shah8260@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "mcp (>=1.27.2,<2.0.0)",
+    "agentshield @ file:///Users/mihirshah/projects/AgentShield/packages/sdk-python"
+]
+
+[tool.poetry]
+packages = [{include = "mcp_gateway", from = "src"}]
+
+
+[tool.poetry.scripts]
+mcp-gateway = "mcp_gateway.server:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.3"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
