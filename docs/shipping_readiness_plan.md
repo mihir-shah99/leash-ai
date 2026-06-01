@@ -61,8 +61,33 @@ shared conformance suite.
 > SDKs. Revisit binding the official engine if/when we need full Cedar semantics
 > (entities, schema, `like`, sets) — tracked as a future item.
 
-**Next:** Sprint 2 (P1 — auth, tenant isolation, audit hashing, CORS, circuit-breaker
-shared state, MCP proxy).
+### Sprint 2 — P1 security core: ✅ COMPLETE (infra items deferred)
+
+Per decision, this sprint covered the security core (P1-1/2/3/6). P1-5 (shared-state
+circuit breaker — needs Redis) and P1-7 (MCP proxy transport rewrite — needs a design
+decision) are intentionally deferred to their own PRs.
+
+| Item | Status | Verification |
+|---|---|---|
+| P1-1 No auth on control plane | ✅ | Hashed-API-key Bearer auth; `get_current_tenant` dependency on all `/v1/*` routes; 401 on missing/invalid; `test_auth.py` |
+| P1-2 Fake/leaky multi-tenancy | ✅ | tenant resolved from key (no more random ids); `/policies/sync` & list scoped to tenant + system policies only; telemetry scoped + attributed |
+| P1-3 Dummy audit hash | ✅ | SHA-256 hash-chaining (`event_hash` = hash(canonical ‖ previous_hash)); tamper-evident; `test_audit_hash.py` incl. a chain-tamper detection test |
+| P1-6 CORS misconfig + SQL echo leak | ✅ | CORS origins from `ALLOWED_ORIGINS` (no wildcard+credentials); `SQL_ECHO` defaults off |
+| P1-5 Per-process circuit breaker | ⏸ Deferred | Needs shared state (Redis); own PR |
+| P1-7 MCP proxy can't proxy | ⏸ Deferred | Needs transport redesign; own PR |
+
+Supporting changes: removed dead/conflicting `models/core.py` (second `Base`); added
+`api_key_hash`/`api_key_prefix` columns + Alembic migration `a1b2c3d4e5f6`; added
+`scripts/create_tenant.py` to provision a tenant + key.
+
+Test results: API `22 passed`, Python SDK `51 passed`, TS SDK `18 passed`.
+
+> Note: telemetry/policy endpoints now require a valid API key. Mint one with
+> `python -m scripts.create_tenant --name ... --slug ...` and pass it as the SDK's
+> `api_key`. Local DB-backed integration tests run in CI once Postgres is wired (P2).
+
+**Next:** Sprint 3 (P2 — CI, Dockerfiles/runnable stack, frontend config, compliance
+packs) plus the deferred P1-5/P1-7.
 
 ---
 

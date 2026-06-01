@@ -9,7 +9,11 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://agentshield:agentshield_password@localhost:5432/agentshield"
 )
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+# SQL echo logs every statement (including action payloads) — keep it off unless
+# explicitly enabled for local debugging via SQL_ECHO=true.
+SQL_ECHO = os.getenv("SQL_ECHO", "false").lower() in ("1", "true", "yes")
+
+engine = create_async_engine(DATABASE_URL, echo=SQL_ECHO)
 
 async_session = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False

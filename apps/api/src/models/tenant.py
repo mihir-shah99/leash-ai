@@ -14,3 +14,9 @@ class Tenant(Base):
     compliance_frameworks = Column(ARRAY(String), default=list)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     settings = Column(JSON, default=dict)
+
+    # API key auth: store only the SHA-256 hash of the key (never the raw value).
+    # api_key_prefix holds the non-secret leading chars for display / log
+    # correlation (e.g. "ask_AbC1...").
+    api_key_hash = Column(String, unique=True, index=True, nullable=True)
+    api_key_prefix = Column(String, index=True, nullable=True)
