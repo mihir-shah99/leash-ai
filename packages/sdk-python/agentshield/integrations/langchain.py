@@ -1,7 +1,6 @@
 import logging
 import json
-import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from langchain_core.callbacks import BaseCallbackHandler
 
 from agentshield.shield import AgentShield
@@ -64,20 +63,20 @@ class AgentShieldCallback(BaseCallbackHandler):
             raise AgentShieldBlockedError(f"AgentShield Security Block: {violations[0]}")
 
     def _send_telemetry_fire_and_forget(self, tool_name: str, arguments: Dict[str, Any], decision: str, violations: List[str]):
-        """Safely sends telemetry without blocking the main event loop."""
+        """Enqueue telemetry on the client's background worker thread.
+
+        This is non-blocking and event-loop-safe: the SDK client owns a daemon
+        thread with a bounded queue, so we never touch asyncio here (which is
+        what previously crashed sync agents and silently dropped every event).
+        """
         event_dict = {
             "agent_id": "00000000-0000-0000-0000-000000000001",
             "action_type": tool_name,
             "action_detail": {"tool_name": tool_name, "arguments": arguments},
             "decision": decision,
-            "violations": violations
+            "violations": violations,
         }
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self.shield.client.send_audit_event_async(event_dict))
-            except RuntimeError:
-                # No running loop, safe to use asyncio.run
-                asyncio.run(self.shield.client.send_audit_event_async(event_dict))
+            self.shield.client.send_audit_event_fire_and_forget(event_dict)
         except Exception as e:
             logger.error(f"Telemetry failed: {e}")

@@ -41,7 +41,9 @@ async def redact_text(payload: RedactPayload):
         
         anonymizer = AnonymizerEngine()
         
-        results = analyzer.analyze(text=payload.text, entities=[], language='en')
+        # entities=None analyses for ALL supported entity types; an empty list
+        # matches nothing (the previous bug, which made deep redaction a no-op).
+        results = analyzer.analyze(text=payload.text, entities=None, language='en')
         anonymized_result = anonymizer.anonymize(text=payload.text, analyzer_results=results)
         
         return {"redacted_text": anonymized_result.text}

@@ -34,6 +34,38 @@ backed by the conformance test suite (P0-7).
 
 ---
 
+## Progress log
+
+### Sprint 1 — P0 ship blockers: ✅ COMPLETE
+
+All eight P0 items are fixed and verified by tests.
+
+| Item | Status | Verification |
+|---|---|---|
+| P0-1 Bypassable enforcement | ✅ | `"5,000"`, `"$9999"`, `"5_000"`, `" 600 "` now all DENY; covered in `test_engine.py` + conformance suite |
+| P0-2 Engine crash on `&&`/multi-`==` | ✅ | Real parser; invalid statements skipped not fatal; `test_engine.py` |
+| P0-3 Fake regex "Cedar AST" | ✅ | Rewrote `engine.py` as tokenizer + recursive-descent parser + typed evaluator (full `== != > >= < <= && \|\| in`, parens) |
+| P0-4 Undefined fail posture | ✅ | `default_effect` + `fail_closed` config; missing-attr → not-applicable; indeterminate → fail closed; degraded sync now logs at WARNING |
+| P0-5 LangChain zero telemetry | ✅ | Routed through `send_audit_event_fire_and_forget`; removed dead asyncio path |
+| P0-6 `AgentShield()` crash | ✅ | `import os` added; `AgentShield()` constructs cleanly |
+| P0-7 Divergent Py/TS dialects | ✅ | Both SDKs aligned to `context.*`; shared `packages/conformance/cases.json` (18 cases) passes in **both** Python (pytest) and TypeScript (vitest) |
+| P0-8 No-op deep PII redaction | ✅ | `entities=None` in SDK + API; safe fallback on missing model |
+
+Test results at time of writing: Python SDK `51 passed`, API `5 passed`, TS SDK
+`18 passed`. Decision parity between the Python and TypeScript engines is enforced by the
+shared conformance suite.
+
+> Note on P0-3 decision: rather than take a heavy native dependency on the Rust
+> `cedar-policy` engine inside the SDK, we implemented a self-contained parser/evaluator
+> for a documented Cedar subset. This is testable, dependency-free, and identical across
+> SDKs. Revisit binding the official engine if/when we need full Cedar semantics
+> (entities, schema, `like`, sets) — tracked as a future item.
+
+**Next:** Sprint 2 (P1 — auth, tenant isolation, audit hashing, CORS, circuit-breaker
+shared state, MCP proxy).
+
+---
+
 ## P0 — Ship blockers (the product must actually do what we claim)
 
 ### P0-1 · Deterministic policy enforcement is bypassable

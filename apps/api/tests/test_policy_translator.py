@@ -16,13 +16,13 @@ def test_translate_numeric_greater():
     res = CedarPolicyTranslator.translate("Block issue_refund when amount is greater than 500")
     assert res["success"] is True
     assert 'context.tool_name == "issue_refund"' in res["cedar_content"]
-    assert 'context.amount > "500"' in res["cedar_content"]
+    assert 'context.amount > 500' in res["cedar_content"]
 
 def test_translate_numeric_less():
     res = CedarPolicyTranslator.translate("Forbid issue_refund if amount is less than 100")
     assert res["success"] is True
     assert 'context.tool_name == "issue_refund"' in res["cedar_content"]
-    assert 'context.amount < "100"' in res["cedar_content"]
+    assert 'context.amount < 100' in res["cedar_content"]
 
 def test_translate_text_contains():
     res = CedarPolicyTranslator.translate("Block execute_sql when query contains drop table")

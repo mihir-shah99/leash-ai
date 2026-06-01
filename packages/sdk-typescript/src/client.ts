@@ -27,9 +27,16 @@ export class AgentShieldClient {
       });
       
       if (response.ok) {
-        const data = await response.json() as { policies?: string[] };
+        // The control plane returns policy objects ({ id, name, content, language });
+        // older builds returned bare strings. Accept both and extract the Cedar text.
+        const data = (await response.json()) as {
+          policies?: Array<string | { content?: string }>;
+        };
         if (data.policies) {
-          this.engine.updatePolicies(data.policies);
+          const contents = data.policies
+            .map((p) => (typeof p === "string" ? p : p?.content ?? ""))
+            .filter((c) => c.trim().length > 0);
+          this.engine.updatePolicies(contents);
         }
       } else {
         console.error("[AgentShield] Failed to sync policies:", response.statusText);

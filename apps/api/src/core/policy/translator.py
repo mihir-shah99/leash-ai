@@ -53,7 +53,7 @@ class CedarPolicyTranslator:
     action,
     resource
 ) when {{
-    context.tool_name == "{tool_name}" && context.{attr} > "{value}"
+    context.tool_name == "{tool_name}" && context.{attr} > {value}
 }};"""
                 explanation = f"Prevents agent from calling '{tool_name}' if the parameter '{attr}' is greater than {value}."
                 success = True
@@ -74,7 +74,7 @@ class CedarPolicyTranslator:
     action,
     resource
 ) when {{
-    context.tool_name == "{tool_name}" && context.{attr} < "{value}"
+    context.tool_name == "{tool_name}" && context.{attr} < {value}
 }};"""
                 explanation = f"Prevents agent from calling '{tool_name}' if the parameter '{attr}' is less than {value}."
                 success = True
