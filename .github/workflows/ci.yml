@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk-python:
+    name: Python SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Test dependencies only. Presidio/spaCy are optional at runtime (the PII
+      # engine falls back to edge regex when they're absent), so we keep the
+      # test job fast and deterministic.
+      - run: pip install httpx pytest
+      - name: Run SDK tests (engine, conformance, circuit breaker, PII)
+        working-directory: packages/sdk-python
+        run: python -m pytest tests -q
+
+  api:
+    name: Control plane API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install fastapi "pydantic>=2" sqlalchemy asyncpg greenlet pytest
+      - name: Run API tests (auth, audit hashing, translator)
+        working-directory: apps/api
+        run: python -m pytest tests -q
+
+  sdk-typescript:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: packages/sdk-typescript
+      - name: Conformance suite (must match the Python engine)
+        working-directory: packages/sdk-typescript
+        run: npm test
+
+  web:
+    name: Web dashboard build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: apps/web
+      - name: Typecheck + build
+        working-directory: apps/web
+        run: npm run build

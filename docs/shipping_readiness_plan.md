@@ -86,8 +86,23 @@ Test results: API `22 passed`, Python SDK `51 passed`, TS SDK `18 passed`.
 > `python -m scripts.create_tenant --name ... --slug ...` and pass it as the SDK's
 > `api_key`. Local DB-backed integration tests run in CI once Postgres is wired (P2).
 
-**Next:** Sprint 3 (P2 — CI, Dockerfiles/runnable stack, frontend config, compliance
-packs) plus the deferred P1-5/P1-7.
+### Sprint 3 — P2 private-beta readiness: 🚧 IN PROGRESS
+
+| Item | Status | Verification |
+|---|---|---|
+| P2-1 No CI/CD | ✅ | `.github/workflows/ci.yml`: 4 jobs (Python SDK, API, TS SDK conformance, web build). Runs the same suites verified locally |
+| P2-3 Tests that can't fail | ✅ | Done in Sprint 1: print-scripts converted to assertions; engine/CB/conformance/auth/audit suites added |
+| P2-4 Frontend not deployable | ✅ | `src/lib/api.ts` (base URL + key from `VITE_*`); all hardcoded `localhost:8000` removed; `.env.example` added |
+| (bonus) Web build was broken | ✅ | Removed pre-existing unused imports; `npm run build` now passes (tsc + vite) |
+| P2-2 No reproducible build / Docker | ⬜ Pending | Dockerfiles for API + web; compose for db+api+web; verify dependency pins resolve |
+| P2-5 Dead discovery router | ⬜ Pending | Wire behind auth or remove |
+| P2-6 Empty compliance packs | ⬜ Pending | Author + test one real pack per framework (domain work) |
+
+Test results: API `22 passed`, Python SDK `51 passed`, TS SDK `18 passed`, web build OK.
+`npm ci` verified for both TS packages (CI uses it).
+
+**Next:** finish P2 (Docker, discovery router, first compliance pack) and the deferred
+P1-5/P1-7.
 
 ---
 
