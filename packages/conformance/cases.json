@@ -1,0 +1,132 @@
+{
+  "description": "Cross-SDK policy conformance suite. Both the Python and TypeScript engines MUST produce the same decision for every case. expected is ALLOW or DENY.",
+  "cases": [
+    {
+      "name": "refund over limit (demo)",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": 10000 },
+      "expected": "DENY"
+    },
+    {
+      "name": "refund with thousands separator must not bypass",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": "5,000" },
+      "expected": "DENY"
+    },
+    {
+      "name": "refund with currency symbol must not bypass",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": "$9999" },
+      "expected": "DENY"
+    },
+    {
+      "name": "refund under limit allowed",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": 100 },
+      "expected": "ALLOW"
+    },
+    {
+      "name": "refund at boundary not greater-than",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": 500 },
+      "expected": "ALLOW"
+    },
+    {
+      "name": "non-numeric amount fails closed",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "issue_refund",
+      "args": { "amount": "abc" },
+      "expected": "DENY"
+    },
+    {
+      "name": "rule does not over-block tools without the attribute",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"issue_refund\" && context.amount > 500 };"],
+      "tool_name": "send_email",
+      "args": { "to": "a@b.com" },
+      "expected": "ALLOW"
+    },
+    {
+      "name": "substring match blocks",
+      "policies": ["forbid(principal, action, resource) when { \"rm -rf\" in context.query };"],
+      "tool_name": "run_shell",
+      "args": { "query": "please rm -rf /" },
+      "expected": "DENY"
+    },
+    {
+      "name": "substring no match allows",
+      "policies": ["forbid(principal, action, resource) when { \"rm -rf\" in context.query };"],
+      "tool_name": "run_shell",
+      "args": { "query": "ls -la" },
+      "expected": "ALLOW"
+    },
+    {
+      "name": "substring rule with missing attribute does not over-block",
+      "policies": ["forbid(principal, action, resource) when { \"rm -rf\" in context.query };"],
+      "tool_name": "ping",
+      "args": {},
+      "expected": "ALLOW"
+    },
+    {
+      "name": "not-equals blocks non-admin",
+      "policies": ["forbid(principal, action, resource) when { context.role != \"admin\" };"],
+      "tool_name": "deploy",
+      "args": { "role": "guest" },
+      "expected": "DENY"
+    },
+    {
+      "name": "not-equals allows admin",
+      "policies": ["forbid(principal, action, resource) when { context.role != \"admin\" };"],
+      "tool_name": "deploy",
+      "args": { "role": "admin" },
+      "expected": "ALLOW"
+    },
+    {
+      "name": "logical OR matches either tool",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"a\" || context.tool_name == \"b\" };"],
+      "tool_name": "b",
+      "args": {},
+      "expected": "DENY"
+    },
+    {
+      "name": "logical OR no match",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"a\" || context.tool_name == \"b\" };"],
+      "tool_name": "c",
+      "args": {},
+      "expected": "ALLOW"
+    },
+    {
+      "name": "greater-or-equal boundary blocks",
+      "policies": ["forbid(principal, action, resource) when { context.amount >= 500 };"],
+      "tool_name": "pay",
+      "args": { "amount": 500 },
+      "expected": "DENY"
+    },
+    {
+      "name": "two equality terms in one clause does not crash",
+      "policies": ["forbid(principal, action, resource) when { context.tool_name == \"x\" && context.role == \"guest\" };"],
+      "tool_name": "x",
+      "args": { "role": "guest" },
+      "expected": "DENY"
+    },
+    {
+      "name": "invalid statement is skipped, valid one still enforced",
+      "policies": ["this is not a policy ;", "forbid(principal, action, resource) when { context.tool_name == \"x\" };"],
+      "tool_name": "x",
+      "args": {},
+      "expected": "DENY"
+    },
+    {
+      "name": "default deny posture with no matching policy",
+      "policies": [],
+      "tool_name": "anything",
+      "args": {},
+      "default_effect": "deny",
+      "expected": "DENY"
+    }
+  ]
+}

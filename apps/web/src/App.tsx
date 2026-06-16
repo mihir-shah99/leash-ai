@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Shield, LayoutDashboard, Activity, FileText, Settings, ShieldAlert, Hexagon } from 'lucide-react';
+import { Shield, LayoutDashboard, Activity, FileText, Settings, Hexagon } from 'lucide-react';
 import React from 'react';
 import { motion } from 'framer-motion';
 import Dashboard from './pages/Dashboard';

@@ -38,21 +38,32 @@ class PIIRedactor:
             try:
                 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
                 from presidio_anonymizer import AnonymizerEngine
-            except ImportError:
-                logger.warning("Presidio not installed. Falling back to Edge mode.")
+
+                logger.info("Initializing Microsoft Presidio AnalyzerEngine...")
+                analyzer = AnalyzerEngine()
+
+                ssn_pattern = Pattern(name="ssn_pattern", regex=r"\b\d{3}[-.]?\d{2}[-.]?\d{4}\b", score=0.85)
+                ssn_recognizer = PatternRecognizer(supported_entity="US_SSN", patterns=[ssn_pattern])
+                analyzer.registry.add_recognizer(ssn_recognizer)
+
+                cls._analyzer = analyzer
+                cls._anonymizer = AnonymizerEngine()
+            except Exception as e:
+                # Covers a missing presidio install AND a missing spaCy NER model
+                # (en_core_web_lg). Either way we must not silently pass PII through.
+                logger.warning(f"Presidio unavailable ({e}). Falling back to Edge regex redaction.")
                 return cls._redact_edge(text)
-                
-            logger.info("Initializing Microsoft Presidio AnalyzerEngine...")
-            cls._analyzer = AnalyzerEngine()
-            
-            ssn_pattern = Pattern(name="ssn_pattern", regex=r"\b\d{3}[-.]?\d{2}[-.]?\d{4}\b", score=0.85)
-            ssn_recognizer = PatternRecognizer(supported_entity="US_SSN", patterns=[ssn_pattern])
-            cls._analyzer.registry.add_recognizer(ssn_recognizer)
-            cls._anonymizer = AnonymizerEngine()
-            
-        results = cls._analyzer.analyze(text=text, entities=[], language='en')
-        anonymized_result = cls._anonymizer.anonymize(text=text, analyzer_results=results)
-        return anonymized_result.text
+
+        try:
+            # entities=None analyses for ALL supported entity types. Passing an
+            # empty list (the previous bug) matched nothing, so deep mode redacted
+            # nothing beyond the manual SSN pattern.
+            results = cls._analyzer.analyze(text=text, entities=None, language="en")
+            anonymized_result = cls._anonymizer.anonymize(text=text, analyzer_results=results)
+            return anonymized_result.text
+        except Exception as e:
+            logger.warning(f"Deep redaction failed ({e}). Falling back to Edge regex redaction.")
+            return cls._redact_edge(text)
         
     @classmethod
     def _redact_deep_remote(cls, text: str) -> str:

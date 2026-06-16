@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, ShieldAlert, CheckCircle2, FileJson, Layers, Cpu, Code2, Play } from 'lucide-react';
+import { Plus, FileJson, Layers, Cpu, Code2, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 interface Policy {
   id: string;
@@ -31,7 +32,7 @@ const Policies = () => {
 
   const fetchPolicies = async () => {
     try {
-      const res = await fetch('http://localhost:8000/v1/policies');
+      const res = await apiFetch('/v1/policies');
       if (res.ok) {
         const data = await res.json();
         setPolicies(data);
@@ -44,7 +45,7 @@ const Policies = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:8000/v1/policies', {
+      const res = await apiFetch('/v1/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPolicy)
@@ -133,7 +134,7 @@ const Policies = () => {
                         setIsGenerating(true);
                         setAiExplanation('');
                         try {
-                          const res = await fetch('http://localhost:8000/v1/policies/generate', {
+                          const res = await apiFetch('/v1/policies/generate', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ natural_language: newPolicy.description })

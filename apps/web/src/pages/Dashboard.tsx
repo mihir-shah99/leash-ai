@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Activity, Shield, ShieldAlert, FileText, XCircle, Terminal, Zap } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 interface AuditEvent {
   event_id: string;
@@ -30,7 +31,7 @@ const Dashboard = () => {
 
   const fetchEvents = async () => {
     try {
-      const res = await fetch('http://localhost:8000/v1/telemetry');
+      const res = await apiFetch('/v1/telemetry');
       if (res.ok) {
         const data = await res.json();
         // Just for visual effect in MVP, we might duplicate some if few

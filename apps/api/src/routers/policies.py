@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from src.db.session import get_db
 from src.models.policy import Policy
-import uuid
+from src.models.tenant import Tenant
+from src.core.auth import get_current_tenant
 
 router = APIRouter()
 
@@ -23,7 +25,10 @@ class PolicyGenerateRequest(BaseModel):
     natural_language: str
 
 @router.post("/generate")
-async def generate_policy(req: PolicyGenerateRequest) -> Dict[str, Any]:
+async def generate_policy(
+    req: PolicyGenerateRequest,
+    tenant: Tenant = Depends(get_current_tenant),
+) -> Dict[str, Any]:
     """
     Translates natural language security requirements into valid Cedar policies.
     """
@@ -34,39 +39,63 @@ async def generate_policy(req: PolicyGenerateRequest) -> Dict[str, Any]:
 
 
 @router.get("/sync")
-async def sync_policies(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+async def sync_policies(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
     """
     Endpoint for the SDK to poll and download the latest policies for its tenant.
+
+    Returns the tenant's own enabled policies plus any enabled system policies
+    (tenant_id IS NULL). Crucially, it never returns another tenant's policies.
     """
-    result = await db.execute(select(Policy).where(Policy.enabled == True))
+    result = await db.execute(
+        select(Policy).where(
+            Policy.enabled == True,  # noqa: E712 - SQLAlchemy boolean comparison
+            or_(Policy.tenant_id == tenant.id, Policy.tenant_id.is_(None)),
+        )
+    )
     policies = result.scalars().all()
-    
+
     return {
-        "tenant_id": "mock_tenant",
+        "tenant_id": str(tenant.id),
         "policies": [
             {
                 "id": str(p.id),
                 "name": p.name,
                 "content": p.policy_content,
-                "language": p.policy_language
-            } for p in policies
-        ]
+                "language": p.policy_language,
+            }
+            for p in policies
+        ],
     }
 
 @router.get("/")
-async def list_policies(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Policy).order_by(Policy.created_at.desc()))
+async def list_policies(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Policy)
+        .where(or_(Policy.tenant_id == tenant.id, Policy.tenant_id.is_(None)))
+        .order_by(Policy.created_at.desc())
+    )
     return result.scalars().all()
 
 @router.post("/")
-async def create_policy(policy: PolicyCreate, db: AsyncSession = Depends(get_db)):
+async def create_policy(
+    policy: PolicyCreate,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
     db_policy = Policy(
+        tenant_id=tenant.id,
         name=policy.name,
         description=policy.description,
         framework=policy.framework,
         policy_language=policy.policy_language,
         policy_content=policy.policy_content,
-        severity=policy.severity
+        severity=policy.severity,
     )
     db.add(db_policy)
     await db.commit()

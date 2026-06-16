@@ -1,12 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
+from typing import Dict, Any
 from datetime import datetime
 import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from src.db.session import get_db
 from src.models.audit import AuditEvent
+from src.models.tenant import Tenant
+from src.core.auth import get_current_tenant
+from src.core.audit import compute_event_hash, hashable_fields, GENESIS_HASH
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +29,7 @@ class RedactPayload(BaseModel):
     text: str
 
 @router.post("/redact")
-async def redact_text(payload: RedactPayload):
+async def redact_text(payload: RedactPayload, tenant: Tenant = Depends(get_current_tenant)):
     """
     Provide deep NER-based redaction as a service for edge SDKs.
     """
@@ -41,7 +45,9 @@ async def redact_text(payload: RedactPayload):
         
         anonymizer = AnonymizerEngine()
         
-        results = analyzer.analyze(text=payload.text, entities=[], language='en')
+        # entities=None analyses for ALL supported entity types; an empty list
+        # matches nothing (the previous bug, which made deep redaction a no-op).
+        results = analyzer.analyze(text=payload.text, entities=None, language='en')
         anonymized_result = anonymizer.anonymize(text=payload.text, analyzer_results=results)
         
         return {"redacted_text": anonymized_result.text}
@@ -50,46 +56,83 @@ async def redact_text(payload: RedactPayload):
         raise HTTPException(status_code=500, detail="Redaction service unavailable")
 
 @router.post("/ingest")
-async def ingest_telemetry(event: AuditEventPayload, db: AsyncSession = Depends(get_db)):
+async def ingest_telemetry(
+    event: AuditEventPayload,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Ingest a single audit event from an AgentShield SDK.
-    Writes to PostgreSQL JSONB column.
+
+    The tenant is resolved from the API key, so events are attributable and
+    isolated. Each event is hash-chained to the tenant's previous event to make
+    the audit trail tamper-evident.
     """
-    logger.info(f"Received audit event: {event.event_id} | Decision: {event.policy_decision}")
-    
-    # In a real system, tenant_id and agent_id come from Auth/Tokens.
-    # For MVP, we'll dummy them or extract from headers.
-    dummy_tenant_id = uuid.uuid4()
-    dummy_agent_id = uuid.uuid4()
+    logger.info(
+        f"Audit event {event.event_id} | tenant={tenant.api_key_prefix} | "
+        f"decision={event.policy_decision}"
+    )
+
+    # Deterministic SDK agent id per tenant (until per-agent identity lands).
+    agent_id = uuid.uuid5(uuid.NAMESPACE_OID, f"{tenant.id}:sdk")
+    violations = [event.policy_reason] if event.policy_decision == "DENY" else []
 
     try:
-        db_event = AuditEvent(
-            event_id=uuid.UUID(event.event_id),
-            time=datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")),
-            tenant_id=dummy_tenant_id,
-            agent_id=dummy_agent_id,
+        # Fetch the tip of this tenant's hash chain. NOTE: under highly
+        # concurrent ingest this read-then-write can race; a per-tenant advisory
+        # lock or serial sequence is the hardening step (tracked for later).
+        prev_result = await db.execute(
+            select(AuditEvent.event_hash)
+            .where(AuditEvent.tenant_id == tenant.id)
+            .order_by(AuditEvent.time.desc())
+            .limit(1)
+        )
+        previous_hash = prev_result.scalar_one_or_none() or GENESIS_HASH
+
+        fields = hashable_fields(
+            event_id=event.event_id,
+            timestamp=event.timestamp,
+            tenant_id=str(tenant.id),
+            agent_id=str(agent_id),
             action_type=event.action_type,
             action_detail=event.action_detail,
             decision=event.policy_decision,
-            violations=[event.policy_reason] if event.policy_decision == "DENY" else [],
-            event_hash="dummy_hash_for_mvp"
+            violations=violations,
+        )
+        event_hash = compute_event_hash(fields, previous_hash)
+
+        db_event = AuditEvent(
+            event_id=uuid.UUID(event.event_id),
+            time=datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")),
+            tenant_id=tenant.id,
+            agent_id=agent_id,
+            action_type=event.action_type,
+            action_detail=event.action_detail,
+            decision=event.policy_decision,
+            violations=violations,
+            event_hash=event_hash,
+            previous_hash=previous_hash,
         )
         db.add(db_event)
         await db.commit()
     except Exception as e:
         logger.error(f"Failed to save audit event to DB: {e}")
-        # We don't fail the API request if telemetry insert fails, 
-        # so the agent isn't blocked by telemetry DB issues.
-        pass
-    
+        # Don't fail the SDK request on a telemetry DB issue, so the agent is
+        # never blocked by the audit pipeline.
+        await db.rollback()
+
     return {"status": "success", "event_id": event.event_id}
 
 @router.get("/")
-async def get_telemetry(db: AsyncSession = Depends(get_db)):
-    from sqlalchemy.future import select
+async def get_telemetry(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
-        select(AuditEvent).order_by(AuditEvent.time.desc()).limit(50)
+        select(AuditEvent)
+        .where(AuditEvent.tenant_id == tenant.id)
+        .order_by(AuditEvent.time.desc())
+        .limit(50)
     )
-    events = result.scalars().all()
-    return events
+    return result.scalars().all()
 

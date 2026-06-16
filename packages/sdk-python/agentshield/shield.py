@@ -1,7 +1,7 @@
 from functools import wraps
 from typing import Callable, Any, List, Dict, Union
+import os
 import logging
-import asyncio
 import threading
 import time
 
@@ -25,21 +25,30 @@ class AgentShield:
     
     _instance = None
 
-    def __init__(self, tenant_id: str = None, api_key: str = None, control_plane_url: str = None, base_url: str = None, guardrails: List[Dict] = None, pii_mode: str = "edge"):
+    def __init__(self, tenant_id: str = None, api_key: str = None, control_plane_url: str = None, base_url: str = None, guardrails: List[Dict] = None, pii_mode: str = "edge", default_effect: str = "allow", fail_closed: bool = True):
         """
         Initialize the local agent governance engine.
         `guardrails` allows loading Packs (e.g. AgentShield.Packs.OWASP_TOP_10) locally out-of-the-box.
         Supports both api_key/tenant_id and control_plane_url/base_url parameters for compatibility.
+
+        `default_effect` ("allow"|"deny") sets the posture when no policy matches.
+        `fail_closed` makes indeterminate comparisons resolve toward blocking.
         """
         self.tenant_id = api_key or tenant_id or os.environ.get("AGENT_SHIELD_API_KEY")
         if not self.tenant_id:
             self.tenant_id = "default_tenant"
-            
+
         self.control_plane_url = base_url or control_plane_url or os.environ.get("AGENT_SHIELD_BASE_URL", "http://localhost:8000")
         self.pii_mode = pii_mode
-        self.engine = PolicyEngine()
+        self.default_effect = default_effect
+        self.fail_closed = fail_closed
+        self.engine = PolicyEngine(default_effect=default_effect, fail_closed=fail_closed)
         self.client = AgentShieldClient(api_key=self.tenant_id, base_url=self.control_plane_url)
         self.circuit_breaker = CircuitBreaker()
+        # Tracks whether the most recent control-plane sync succeeded. When False
+        # the SDK is enforcing a potentially stale ruleset; surfaced for callers
+        # that want to alert on a degraded governance state.
+        self.last_sync_ok = False
         
         self._guardrails_cache = guardrails or []
         if guardrails:
@@ -67,23 +76,38 @@ class AgentShield:
                     if response.status_code == 200:
                         data = response.json()
                         policies = data.get("policies", [])
-                        
-                        new_engine = PolicyEngine()
-                        
+
+                        new_engine = PolicyEngine(
+                            default_effect=self.default_effect,
+                            fail_closed=self.fail_closed,
+                        )
+
                         # Re-load static local packs
                         if self._guardrails_cache:
                             for pack in self._guardrails_cache:
                                 new_engine.load_policy(pack["content"])
-                        
+
                         # Load dynamic policies
                         for p in policies:
                             new_engine.load_policy(p["content"])
-                            
+
                         self.engine = new_engine
+                        self.last_sync_ok = True
                         logger.info(f"Dynamically synced {len(policies)} policies from Control Plane.")
+                    else:
+                        self.last_sync_ok = False
+                        logger.warning(
+                            f"Policy sync returned HTTP {response.status_code}; "
+                            f"continuing with the previously loaded ruleset."
+                        )
             except Exception as e:
-                # Silently ignore connection errors during development/testing
-                logger.debug(f"Failed to sync policies from Control Plane: {e}")
+                # Keep enforcing the last-known-good ruleset, but make the degraded
+                # state visible rather than swallowing it at debug level.
+                self.last_sync_ok = False
+                logger.warning(
+                    f"Failed to sync policies from Control Plane ({e}); "
+                    f"continuing with the previously loaded ruleset."
+                )
             
             # Poll every 10 seconds, but check _stop_sync frequently
             for _ in range(10):
